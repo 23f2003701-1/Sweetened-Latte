@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Supported models in Google GenAI SDK
-PRIMARY_MODEL = "gemini-3.5-flash-lite"
+PRIMARY_MODEL = "gemini-3.5-flash"
 FALLBACK_MODEL = "gemini-3.6-flash"
 
 
@@ -120,39 +120,35 @@ async def _call_gemini_vision(system: str, prompt: str, image_bytes: bytes, mime
 
 
 def _mock_plan(profile: dict) -> dict:
+    from datetime import datetime, timedelta
+    today = datetime.now()
+    days_count = min(7, max(1, int(profile.get('days_per_week', 3))))
+    
+    step = max(1, 7 // days_count) if days_count > 1 else 1
+    scheduled_days = [(today + timedelta(days=i * step)).strftime("%A") for i in range(days_count)]
+
+    foci = ["Full Body", "Upper Body & Core", "Lower Body & Mobility", "Cardio & Stamina", "HIIT & Core", "Active Recovery", "Strength & Balance"]
+    
+    schedule = []
+    for idx, day_name in enumerate(scheduled_days):
+        focus = foci[idx % len(foci)]
+        schedule.append({
+            "day": day_name,
+            "focus": focus,
+            "exercises": [
+                {"name": "Squat", "sets": 3, "reps": 10, "rest_seconds": 60, "why_this_exercise": "Builds strong legs and core — the foundation of movement.", "equipment": "bodyweight_only"},
+                {"name": "Push-up", "sets": 3, "reps": 8, "rest_seconds": 60, "why_this_exercise": "Strengthens your chest, shoulders, and arms together.", "equipment": "bodyweight_only"},
+                {"name": "Plank", "sets": 3, "reps": 1, "rest_seconds": 60, "why_this_exercise": "A rock-solid core protects your lower back.", "equipment": "bodyweight_only"}
+            ]
+        })
+
     return {
-        "plan_summary": f"Here's a {profile.get('days_per_week', 3)}-day-a-week plan built around your goal to {profile.get('goal', 'get fit').replace('_', ' ')}. We'll keep things simple and fun!",
-        "weekly_schedule": [
-            {
-                "day": "Monday",
-                "focus": "Full Body",
-                "exercises": [
-                    {"name": "Squat", "sets": 3, "reps": 10, "rest_seconds": 60, "why_this_exercise": "Builds strong legs and core — the foundation of everything.", "equipment": "bodyweight_only"},
-                    {"name": "Push-up", "sets": 3, "reps": 8, "rest_seconds": 60, "why_this_exercise": "Strengthens your chest, shoulders, and arms all at once.", "equipment": "bodyweight_only"},
-                    {"name": "Plank", "sets": 3, "reps": 1, "rest_seconds": 60, "why_this_exercise": "A rock-solid core protects your back.", "equipment": "bodyweight_only"}
-                ]
-            },
-            {
-                "day": "Wednesday",
-                "focus": "Cardio & Core",
-                "exercises": [
-                    {"name": "Jumping Jacks", "sets": 3, "reps": 20, "rest_seconds": 30, "why_this_exercise": "Gets your heart pumping and warms up your whole body.", "equipment": "bodyweight_only"},
-                    {"name": "Mountain Climbers", "sets": 3, "reps": 15, "rest_seconds": 45, "why_this_exercise": "Cardio and core in one move.", "equipment": "bodyweight_only"}
-                ]
-            },
-            {
-                "day": "Friday",
-                "focus": "Upper Body",
-                "exercises": [
-                    {"name": "Push-up", "sets": 3, "reps": 10, "rest_seconds": 60, "why_this_exercise": "Great for building pushing strength.", "equipment": "bodyweight_only"},
-                    {"name": "Tricep Dip", "sets": 3, "reps": 10, "rest_seconds": 60, "why_this_exercise": "Tones the back of your arms.", "equipment": "bodyweight_only"}
-                ]
-            }
-        ],
+        "plan_summary": f"Here's a {days_count}-day-a-week plan starting today ({scheduled_days[0]}) built around your goal to {profile.get('goal', 'get fit').replace('_', ' ')}. Let's crush day one!",
+        "weekly_schedule": schedule,
         "nutrition_tips": [
-            "Drink a glass of water before every meal — it helps you feel full and stay hydrated.",
-            "Try to have some protein at every meal to help your muscles recover.",
-            "Don't skip breakfast — even something small gives you energy for the day."
+            "Drink a glass of water before every meal — it helps you stay hydrated and energetic.",
+            "Include some protein at every meal to help your muscles recover.",
+            "Consistency beats perfection — focus on completing today's workout."
         ]
     }
 
@@ -216,79 +212,53 @@ def _mock_meal_analysis() -> dict:
     }
 
 
-def _generate_nano_banana_svg_fallback(food_name: str, description: str) -> str:
+def _get_realistic_food_image_url(food_name: str, prompt: str = "") -> str:
     import urllib.parse
-    clean_name = food_name.replace("<", "").replace(">", "")
-    clean_desc = description.replace("<", "").replace(">", "")
-    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="500" height="320" viewBox="0 0 500 320">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#0f172a"/>
-          <stop offset="50%" stop-color="#1e293b"/>
-          <stop offset="100%" stop-color="#090d16"/>
-        </linearGradient>
-        <linearGradient id="bananaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#FFE135"/>
-          <stop offset="100%" stop-color="#F59E0B"/>
-        </linearGradient>
-        <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="rgba(255, 225, 53, 0.12)"/>
-          <stop offset="100%" stop-color="rgba(16, 185, 129, 0.12)"/>
-        </linearGradient>
-      </defs>
-      <rect width="500" height="320" fill="url(#bg)" rx="16"/>
-      <circle cx="420" cy="60" r="120" fill="url(#bananaGrad)" opacity="0.15" style="filter: blur(40px);"/>
-      <rect x="20" y="20" width="460" height="280" fill="url(#cardGrad)" rx="14" stroke="rgba(255,225,53,0.3)" stroke-width="1.5"/>
-      <g transform="translate(35, 45)">
-        <path d="M 10 40 Q 40 5 75 30 Q 60 65 10 40 Z" fill="url(#bananaGrad)"/>
-        <text x="90" y="32" fill="#FFE135" font-family="system-ui, sans-serif" font-weight="800" font-size="13" letter-spacing="1.2">GEMINI NANO BANANA • AI ALTERNATIVE</text>
-      </g>
-      <text x="35" y="130" fill="#FFFFFF" font-family="system-ui, sans-serif" font-weight="800" font-size="22">{clean_name[:34]}</text>
-      <text x="35" y="162" fill="#94A3B8" font-family="system-ui, sans-serif" font-weight="500" font-size="13">{clean_desc[:58]}...</text>
-      <g transform="translate(35, 205)">
-        <rect x="0" y="0" width="150" height="38" rx="19" fill="rgba(16, 185, 129, 0.2)" stroke="#10B981" stroke-width="1"/>
-        <text x="75" y="24" fill="#10B981" font-family="system-ui, sans-serif" font-weight="700" font-size="13" text-anchor="middle">🥗 Calorie Smart</text>
-      </g>
-      <g transform="translate(195, 205)">
-        <rect x="0" y="0" width="170" height="38" rx="19" fill="rgba(255, 225, 53, 0.2)" stroke="#FFE135" stroke-width="1"/>
-        <text x="85" y="24" fill="#FFE135" font-family="system-ui, sans-serif" font-weight="700" font-size="13" text-anchor="middle">🍌 Gemini Nano AI</text>
-      </g>
-    </svg>"""
-    return f"data:image/svg+xml;utf8,{urllib.parse.quote(svg)}"
+    clean_name = food_name.strip() if food_name else "healthy delicious dish"
+    photo_prompt = f"appetizing gourmet photograph of {clean_name}, plated beautifully on a modern dish, high resolution food photography, natural lighting, studio quality"
+    encoded = urllib.parse.quote(photo_prompt)
+    return f"https://image.pollinations.ai/prompt/{encoded}?width=600&height=400&nologo=true"
 
 
 async def generate_alternative_food_image(prompt: str, food_name: str = "", description: str = "") -> str:
-    """Generate image of alternative food using Google GenAI SDK (Imagen / Gemini Nano Banana)."""
+    """Generate alternative food image using Gemini nano-banana-pro-preview / gemini-2.5-flash-image with graceful fallback."""
+    clean_name = food_name or "Healthy Meal Alternative"
+    photo_prompt = prompt or f"appetizing delicious high-resolution food photography of {clean_name}"
+
     if _is_configured():
         try:
+            import base64
             client = _get_client()
-            for model_name in ["imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"]:
+            for model_name in ["nano-banana-pro-preview", "gemini-2.5-flash-image", "gemini-3.1-flash-image"]:
                 try:
-                    result = await asyncio.wait_for(
+                    response = await asyncio.wait_for(
                         asyncio.to_thread(
-                            client.models.generate_images,
+                            client.models.generate_content,
                             model=model_name,
-                            prompt=prompt or f"Delicious healthy food photo of {food_name}",
-                            config={"number_of_images": 1, "output_mime_type": "image/jpeg", "aspect_ratio": "1:1"}
+                            contents=f"Generate an appetizing gourmet photograph of {clean_name}: {photo_prompt}",
                         ),
                         timeout=12
                     )
-                    if result and hasattr(result, "generated_images") and result.generated_images:
-                        import base64
-                        img_bytes = result.generated_images[0].image.image_bytes
-                        encoded = base64.b64encode(img_bytes).decode('utf-8')
-                        return f"data:image/jpeg;base64,{encoded}"
+                    if response and response.candidates:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, "inline_data") and part.inline_data and part.inline_data.data:
+                                mime = part.inline_data.mime_type or "image/jpeg"
+                                encoded = base64.b64encode(part.inline_data.data).decode("utf-8")
+                                return f"data:{mime};base64,{encoded}"
                 except Exception as ex:
-                    print(f"[Gemini ImageGen] Model {model_name} note: {ex}")
+                    print(f"[Gemini Image Model: {model_name}] Quota/call note: {ex}")
         except Exception as e:
-            print(f"[Gemini ImageGen] overall exception: {e}")
+            print(f"[Gemini Image Generation Error]: {e}")
 
-    return _generate_nano_banana_svg_fallback(food_name or "Healthy Meal Alternative", description or "Nutritious low-calorie alternative")
+    return _get_realistic_food_image_url(clean_name, prompt)
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 async def generate_plan(profile: dict) -> dict:
+    from datetime import datetime
+    today_name = datetime.now().strftime("%A")
+
     system = (
         "You are a certified fitness coach and nutritionist writing for a general audience. Never use "
         "technical jargon. Keep tone encouraging, concrete, and specific. Always respond "
@@ -302,8 +272,11 @@ async def generate_plan(profile: dict) -> dict:
     constraints_list = profile.get('constraints', [])
     constraints_str = ", ".join(constraints_list) if constraints_list else "None"
 
+    user_notes = f"\nUser specific feedback/request: {profile.get('additional_notes')}" if profile.get('additional_notes') else ""
+
     prompt = f"""Create a personalized weekly workout plan for this person:
 
+Today is: {today_name}
 Age: {profile.get('age')}
 Sex: {profile.get('sex', 'Not specified')}
 Height: {profile.get('height_cm')} cm
@@ -314,9 +287,10 @@ Dietary preference: {profile.get('dietary_preference', 'no_preference')}
 Equipment available: {equip_str}
 Time per session: {profile.get('available_time_minutes')} minutes
 Days per week: {profile.get('days_per_week')}
-Constraints/injuries: {constraints_str}
+Constraints/injuries: {constraints_str}{user_notes}
 
 Rules:
+- CRITICAL RULE: The weekly_schedule MUST start with TODAY ({today_name}) as Day 1 in the list, followed by the remaining workout days across the week.
 - Use only the equipment listed.
 - Respect all constraints and injuries strictly.
 - Keep exercise names simple and common.
@@ -325,10 +299,10 @@ Rules:
 
 Return JSON:
 {{
-  "plan_summary": "1-2 sentence friendly overview",
+  "plan_summary": "1-2 sentence friendly overview mentioning starting today on {today_name}",
   "weekly_schedule": [
     {{
-      "day": "Monday",
+      "day": "{today_name}",
       "focus": "Full Body",
       "exercises": [
         {{
@@ -381,16 +355,26 @@ Return JSON in the same schema as the original plan, plus:
 
 
 async def adjust_plan_for_meal_choice(previous_plan: dict, meal_choice_data: dict) -> dict:
-    """Dynamically adjust the next day's workout session based on whether the user ate the calorie-heavy meal or lower-calorie alternative."""
+    """Dynamically adjust the workout plan based on whether the user ate the calorie-heavy meal or lower-calorie alternative."""
+    from datetime import datetime
+    today_name = datetime.now().strftime("%A")
+
     system = (
-        "You are an adaptive fitness coach. Modify the user's active workout plan based on their meal choice. "
-        "If they ate a high-calorie/calorie-heavy meal, adjust their next workout session by adding specific calorie-burning exercises "
+        "You are an adaptive fitness coach and nutritionist. Modify the user's active weekly workout plan based on their meal choice. "
+        "If they ate a high-calorie/calorie-heavy meal, adapt their upcoming workout session by adding specific calorie-burning exercises "
         "(e.g., Burpees, Mountain Climbers, High Knees, Jump Ropes, HIIT cardio) to burn off those extra calories. "
         "If they ate the low-calorie healthy alternative, adjust the workout to focus on lean strength and optimal performance. "
+        "CRITICAL RULE FOR LAST DAY OF PLAN: If today is the last scheduled workout day of the week (or the final day in weekly_schedule), "
+        "do not adjust a day that already passed today. Instead, adapt the first workout of their next week's schedule (e.g. Monday kickoff), "
+        "and clearly mention in change_summary that since today was the final workout of this week's schedule, the adjustment will take effect in next week's kickoff workout! "
         "Return valid JSON only."
     )
+    
+    first_scheduled_day = previous_plan.get("weekly_schedule", [{}])[0].get("day", "Monday") if previous_plan.get("weekly_schedule") else "Monday"
+
     prompt = f"""Active Workout Plan: {json.dumps(previous_plan)}
 
+Current Day of the Week: {today_name}
 Meal Choice Logged:
 User choice: {meal_choice_data.get('choice')} ('original' = ate calorie-heavy meal, 'alternative' = ate healthy lower calorie alternative)
 Meal Name: {meal_choice_data.get('meal_name')}
@@ -398,13 +382,13 @@ Calories Consumed Range: {meal_choice_data.get('calories_consumed_range', '450-6
 Is High Calorie: {meal_choice_data.get('is_calorie_heavy', True)}
 
 Instructions:
-1. Identify the next upcoming workout day in weekly_schedule.
-2. If choice == 'original' (high calories):
-   - Append 1-2 high-intensity calorie-burning exercises (e.g., 'Burpees (Burn Surplus)', 'Mountain Climbers HIIT') to that day's exercise list with reps/duration aimed at burning the surplus ~250-400 kcal.
-   - Set change_summary to explicitly explain what extra exercises were added to burn the calories eaten.
-3. If choice == 'alternative' (low calories):
-   - Optimize the next workout for energy and muscle building.
-   - Set change_summary to congratulate the user on choosing the healthy alternative.
+1. Look at weekly_schedule in the plan and find the next upcoming workout day relative to {today_name}.
+2. If today is the last scheduled day of the week, target the first workout day of the upcoming cycle ({first_scheduled_day}).
+3. If choice == 'original' (high calories):
+   - Append 1-2 high-intensity calorie-burning exercises (e.g., 'Burpees (Calorie Burner)', 'Mountain Climbers HIIT') with appropriate sets/reps.
+   - Set change_summary explaining clearly which day was adjusted (and if today was the last day, state that it's queued for next week's {first_scheduled_day} kickoff!).
+4. If choice == 'alternative' (low calories):
+   - Set change_summary congratulating the user on choosing the healthy alternative and keeping their plan optimized.
 
 Return full plan JSON matching original structure plus:
 {{"change_summary": "Explicit 1-2 sentence explanation of workout adjustment based on meal decision"}}"""
@@ -418,8 +402,11 @@ Return full plan JSON matching original structure plus:
         choice = meal_choice_data.get("choice", "original")
         
         if schedule:
-            next_day = schedule[0]
-            exercises = next_day.get("exercises", [])
+            last_day_name = schedule[-1].get("day", "")
+            is_last_day = (today_name.lower() == last_day_name.lower()) or (len(schedule) == 1)
+            target_day = schedule[0] if is_last_day else (schedule[1] if len(schedule) > 1 else schedule[0])
+            exercises = target_day.get("exercises", [])
+            
             if choice == "original":
                 exercises.append({
                     "name": "Burpees & Mountain Climbers (Calorie Burner)",
@@ -429,9 +416,15 @@ Return full plan JSON matching original structure plus:
                     "why_this_exercise": "Added specifically to burn off excess calories from your recent meal!",
                     "equipment": "bodyweight_only"
                 })
-                result["change_summary"] = f"Next workout ({next_day.get('day', 'Tomorrow')}) adjusted: Added 4 sets of Burpees & Mountain Climbers to burn off the extra calories from your meal!"
+                if is_last_day:
+                    result["change_summary"] = f"Since today was the last workout of this week's plan, we've updated your next week's kickoff ({target_day.get('day', 'Monday')}) with 4 sets of Burpees to burn off the extra calories!"
+                else:
+                    result["change_summary"] = f"Next workout ({target_day.get('day', 'Tomorrow')}) adjusted: Added 4 sets of Burpees & Mountain Climbers to burn off the extra calories from your meal!"
             else:
-                result["change_summary"] = f"Great job choosing the healthy alternative! Your {next_day.get('day', 'next')} workout is optimized for peak performance and recovery."
+                if is_last_day:
+                    result["change_summary"] = f"Great job choosing the healthy alternative! Your next week's kickoff workout ({target_day.get('day', 'Monday')}) is primed for peak energy."
+                else:
+                    result["change_summary"] = f"Great job choosing the healthy alternative! Your {target_day.get('day', 'next')} workout is optimized for peak performance and recovery."
         else:
             result["change_summary"] = "Workout plan updated based on your nutrition choice!"
 

@@ -130,19 +130,23 @@ function NutritionResultCard({ result, userId }) {
           boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffe135', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-              🍌 Gemini Nano AI Healthy Alternative
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--accent-green)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+              ✨ AI Healthy Alternative
             </span>
             <span className="badge badge-green" style={{ fontSize: '0.75rem' }}>Lower Calories</span>
           </div>
 
           {/* Generated Image */}
           {altFood.image_url && (
-            <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.1)', background: '#0a0a0f' }}>
+            <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.1)', background: '#0a0a0f', minHeight: 180 }}>
               <img
                 src={altFood.image_url}
                 alt={altFood.name || 'Suggested healthy food'}
+                loading="lazy"
                 style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block' }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
               />
             </div>
           )}
@@ -386,231 +390,315 @@ export default function FoodScanner({ userId }) {
 
   return (
     <div className="page">
-      <div className="app-container" style={{ maxWidth: 640 }}>
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>Can I Eat This?</h1>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Take a photo of your meal for an instant AI nutrition verdict with Gemini Multimodal.
-          </p>
-        </div>
-
-        {/* Live Camera Viewfinder or Image Upload/Preview Box */}
-        <div
-          id="food-upload-zone"
-          style={{
-            border: `2px dashed ${imagePreview || cameraOpen ? 'var(--border-active)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius-xl)',
-            minHeight: 280,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            position: 'relative',
-            background: '#0a0a0f',
-            transition: 'border-color 0.2s',
-          }}
-        >
-          {cameraOpen ? (
-            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-              {cameraLoading && (
-                <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,10,15,0.85)', gap: '1rem' }}>
-                  <LoadingSpinner size={36} />
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Starting camera…</p>
-                </div>
-              )}
-
-              {cameraError ? (
-                <div style={{ padding: '2rem', textAlign: 'center' }}>
-                  <AlertCircle size={36} color="var(--accent-red)" style={{ margin: '0 auto 0.75rem' }} />
-                  <p style={{ color: 'var(--accent-red)', fontSize: '0.9rem', marginBottom: '1rem' }}>{cameraError}</p>
-                  <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
-                    <Upload size={14} /> Upload from device instead
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
-                    }}
-                  />
-
-                  {/* Viewfinder Reticle Overlay */}
-                  <div style={{
-                    position: 'absolute',
-                    inset: '10%',
-                    border: '2px solid rgba(0, 230, 118, 0.4)',
-                    borderRadius: 16,
-                    pointerEvents: 'none',
-                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.25)',
-                  }} />
-
-                  {/* In-Camera Control Toolbar */}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '1rem',
-                    left: 0,
-                    right: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '1.25rem',
-                    zIndex: 10,
-                  }}>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
-                      onClick={closeCamera}
-                      title="Cancel"
-                    >
-                      <X size={20} />
-                    </button>
-
-                    <button
-                      id="btn-snap-photo"
-                      className="btn btn-primary"
-                      style={{
-                        borderRadius: '50%',
-                        width: 60,
-                        height: 60,
-                        padding: 0,
-                        boxShadow: '0 0 20px rgba(0,230,118,0.5)',
-                      }}
-                      onClick={capturePhoto}
-                      title="Take Photo"
-                    >
-                      <Camera size={26} color="#0a0a0f" />
-                    </button>
-
-                    <button
-                      className="btn btn-secondary"
-                      style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
-                      onClick={toggleFacingMode}
-                      title="Switch Camera"
-                    >
-                      <RefreshCw size={18} />
-                    </button>
-                  </div>
-                </>
-              )}
+      <div className="app-container" style={{ maxWidth: 1180, padding: '0 1rem' }}>
+        {/* Page Header */}
+        <div style={{ marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0, 230, 118, 0.1)', color: 'var(--accent-green)', padding: '0.3rem 0.75rem', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+              <Sparkles size={13} /> Multimodal Food Vision
             </div>
-          ) : imagePreview ? (
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <img
-                src={imagePreview}
-                alt="Meal preview"
-                style={{ width: '100%', maxHeight: 360, objectFit: 'cover', display: 'block' }}
-              />
-            </div>
-          ) : (
-            <div
-              style={{ padding: '2.5rem 1.5rem', textAlign: 'center', cursor: 'pointer' }}
-              onClick={() => startCamera()}
-            >
-              <div style={{
-                width: 64, height: 64, borderRadius: '50%',
-                background: 'var(--bg-elevated)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'
-              }}>
-                <Camera size={32} color="var(--accent-green)" />
-              </div>
-              <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem' }}>
-                Open Camera or Upload Photo
-              </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 4 }}>
-                Take a live photo of your meal or select an image file
-              </p>
-            </div>
-          )}
-
-          <input
-            id="food-file-input"
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-        </div>
-
-        {/* Primary Action Buttons */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-          {!cameraOpen && (
-            <button
-              id="btn-open-camera"
-              className="btn btn-secondary"
-              style={{ flex: 1, minWidth: 140 }}
-              onClick={() => startCamera()}
-            >
-              <Camera size={18} color="var(--accent-green)" />
-              {imagePreview ? 'Retake with Camera' : 'Take Photo'}
-            </button>
-          )}
-
-          <button
-            id="btn-upload-file"
-            className="btn btn-secondary"
-            style={{ flex: 1, minWidth: 140 }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={18} />
-            Upload File
-          </button>
-
-          <button
-            id="btn-analyze-meal"
-            className="btn btn-primary"
-            style={{ flex: 2, minWidth: 200 }}
-            onClick={() => analyzeMutation.mutate()}
-            disabled={!imageFile || analyzeMutation.isPending || cameraOpen}
-          >
-            {analyzeMutation.isPending ? (
-              <><LoadingSpinner size={18} color="#0a0a0f" /> Analysing with Gemini…</>
-            ) : (
-              <><Zap size={18} /> Analyze Meal</>
-            )}
-          </button>
-        </div>
-
-        {analyzeMutation.isError && (
-          <p style={{ color: 'var(--accent-red)', fontSize: '0.88rem', marginTop: '0.75rem', textAlign: 'center' }}>
-            Analysis failed — please try again.
-          </p>
-        )}
-
-        {analysisResult && <NutritionResultCard result={analysisResult} userId={userId} />}
-
-        {/* Today's meal log */}
-        {todaysMeals.length > 0 && (
-          <div style={{ marginTop: '2rem' }}>
-            <h3 style={{ marginBottom: '0.75rem' }}>Today's Meals</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {todaysMeals.map((meal, i) => (
-                <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <span style={{ fontSize: '1.5rem' }}>🍽</span>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                      {meal.identified_items?.join(', ') || 'Meal'}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {meal.estimated_nutrition?.energy_kcal} kcal · {meal.estimated_nutrition?.protein_g}g protein
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <h1 style={{ fontSize: '2.2rem', margin: 0, fontWeight: 900 }}>Eat This?</h1>
+            <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: '0.95rem' }}>
+              Scan your meal for instant calorie breakdown and adaptive workout calibration.
+            </p>
           </div>
-        )}
+          {todaysMeals.length > 0 && (
+            <div className="card" style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>🥗</span>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Logged Today</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--accent-green)' }}>{todaysMeals.length} Meals</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Full-Page 2-Column Responsive Section Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: '1.75rem',
+          alignItems: 'start',
+        }}>
+          {/* LEFT SECTION: Visual Capture & Scanner Hub */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="card" style={{ padding: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Camera & Photo Scanner
+                </span>
+                {imagePreview && (
+                  <span className="badge badge-green" style={{ fontSize: '0.72rem' }}>Image Ready</span>
+                )}
+              </div>
+
+              {/* Viewfinder / Dropzone Box */}
+              <div
+                id="food-upload-zone"
+                style={{
+                  border: `2px dashed ${imagePreview || cameraOpen ? 'var(--border-active)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-lg)',
+                  minHeight: 300,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  background: '#0a0a0f',
+                  transition: 'border-color 0.2s',
+                }}
+              >
+                {cameraOpen ? (
+                  <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                    {cameraLoading && (
+                      <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,10,15,0.85)', gap: '1rem' }}>
+                        <LoadingSpinner size={36} />
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Starting camera…</p>
+                      </div>
+                    )}
+
+                    {cameraError ? (
+                      <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        <AlertCircle size={36} color="var(--accent-red)" style={{ margin: '0 auto 0.75rem' }} />
+                        <p style={{ color: 'var(--accent-red)', fontSize: '0.9rem', marginBottom: '1rem' }}>{cameraError}</p>
+                        <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
+                          <Upload size={14} /> Upload from device instead
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            minHeight: 320,
+                            objectFit: 'cover',
+                            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                          }}
+                        />
+
+                        {/* Viewfinder Reticle Overlay */}
+                        <div style={{
+                          position: 'absolute',
+                          inset: '12%',
+                          border: '2px solid rgba(0, 230, 118, 0.4)',
+                          borderRadius: 16,
+                          pointerEvents: 'none',
+                          boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.3)',
+                        }} />
+
+                        {/* In-Camera Control Toolbar */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '1rem',
+                          left: 0,
+                          right: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '1.25rem',
+                          zIndex: 10,
+                        }}>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
+                            onClick={closeCamera}
+                            title="Cancel"
+                          >
+                            <X size={20} />
+                          </button>
+
+                          <button
+                            id="btn-snap-photo"
+                            className="btn btn-primary"
+                            style={{
+                              borderRadius: '50%',
+                              width: 62,
+                              height: 62,
+                              padding: 0,
+                              boxShadow: '0 0 24px rgba(0,230,118,0.6)',
+                            }}
+                            onClick={capturePhoto}
+                            title="Take Photo"
+                          >
+                            <Camera size={28} color="#0a0a0f" />
+                          </button>
+
+                          <button
+                            className="btn btn-secondary"
+                            style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
+                            onClick={toggleFacingMode}
+                            title="Switch Camera"
+                          >
+                            <RefreshCw size={18} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : imagePreview ? (
+                  <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                    <img
+                      src={imagePreview}
+                      alt="Meal preview"
+                      style={{ width: '100%', maxHeight: 380, objectFit: 'cover', display: 'block' }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    style={{ padding: '3rem 1.5rem', textAlign: 'center', cursor: 'pointer', width: '100%' }}
+                    onClick={() => startCamera()}
+                  >
+                    <div style={{
+                      width: 68, height: 68, borderRadius: '50%',
+                      background: 'var(--bg-elevated)', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+                      border: '1px solid var(--border)'
+                    }}>
+                      <Camera size={34} color="var(--accent-green)" />
+                    </div>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>
+                      Take Live Photo or Upload
+                    </p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginTop: 6 }}>
+                      Point at your plate or drag & drop an image
+                    </p>
+                  </div>
+                )}
+
+                <input
+                  id="food-file-input"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleFileChange}
+                />
+              </div>
+
+              {/* Action Buttons Toolbar */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                {!cameraOpen && (
+                  <button
+                    id="btn-open-camera"
+                    className="btn btn-secondary"
+                    style={{ flex: 1, minWidth: 130 }}
+                    onClick={() => startCamera()}
+                  >
+                    <Camera size={16} color="var(--accent-green)" />
+                    {imagePreview ? 'Retake' : 'Open Camera'}
+                  </button>
+                )}
+
+                <button
+                  id="btn-upload-file"
+                  className="btn btn-secondary"
+                  style={{ flex: 1, minWidth: 130 }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={16} />
+                  Upload Photo
+                </button>
+
+                <button
+                  id="btn-analyze-meal"
+                  className="btn btn-primary"
+                  style={{ flex: 2, minWidth: 180 }}
+                  onClick={() => analyzeMutation.mutate()}
+                  disabled={!imageFile || analyzeMutation.isPending || cameraOpen}
+                >
+                  {analyzeMutation.isPending ? (
+                    <><LoadingSpinner size={18} color="#0a0a0f" /> Analysing with Gemini…</>
+                  ) : (
+                    <><Zap size={18} /> Analyze with Gemini</>
+                  )}
+                </button>
+              </div>
+
+              {analyzeMutation.isError && (
+                <p style={{ color: 'var(--accent-red)', fontSize: '0.88rem', marginTop: '0.75rem', textAlign: 'center' }}>
+                  Analysis failed — please try a clearer photo.
+                </p>
+              )}
+            </div>
+
+            {/* Today's Logged Meals History */}
+            {todaysMeals.length > 0 && (
+              <div className="card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                  <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: 700 }}>Today's Meal Diary</h3>
+                  <span className="badge badge-blue">{todaysMeals.length} logged</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: 280, overflowY: 'auto' }}>
+                  {todaysMeals.map((meal, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '1.3rem' }}>🍽</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                          {meal.identified_items?.join(', ') || 'Meal'}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          {meal.estimated_nutrition?.energy_kcal ? `${meal.estimated_nutrition.energy_kcal} kcal` : 'Scanned meal'} · {meal.estimated_nutrition?.protein_g ? `${meal.estimated_nutrition.protein_g}g protein` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SECTION: AI Multimodal Intelligence & Alternatives */}
+          <div>
+            {analyzeMutation.isPending ? (
+              <div className="card accent" style={{ padding: '3.5rem 2rem', textAlign: 'center' }}>
+                <LoadingSpinner size={44} />
+                <h3 style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>Gemini Multimodal Analyzing…</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: 360, margin: '0 auto' }}>
+                  Identifying ingredients, calculating calorie ranges, and formatting your alternative dish recommendations.
+                </p>
+              </div>
+            ) : analysisResult ? (
+              <NutritionResultCard result={analysisResult} userId={userId} />
+            ) : (
+              /* Empty state guide */
+              <div className="card" style={{ padding: '2.5rem 2rem', textAlign: 'center', border: '1px dashed var(--border)' }}>
+                <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(0, 230, 118, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+                  <Zap size={28} color="var(--accent-green)" />
+                </div>
+                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', fontWeight: 800 }}>Ready for Instant Analysis</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, maxWidth: 420, margin: '0 auto 1.5rem' }}>
+                  Snap or upload any plate of food. Gemini will break down its ingredients, estimate calories in realistic ranges, and suggest delicious calorie-smart alternatives that calibrate your workout.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', textAlign: 'left' }}>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-elevated)', borderRadius: 10 }}>
+                    <div style={{ fontSize: '1.1rem', marginBottom: 4 }}>📊</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Macro Ranges</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Min-max estimates</div>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-elevated)', borderRadius: 10 }}>
+                    <div style={{ fontSize: '1.1rem', marginBottom: 4 }}>🥑</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Healthy Swaps</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>AI alternative food</div>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-elevated)', borderRadius: 10 }}>
+                    <div style={{ fontSize: '1.1rem', marginBottom: 4 }}>⚡</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Adaptive Plan</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Calorie burn burn-off</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
 
