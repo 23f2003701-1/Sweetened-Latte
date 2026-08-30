@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Upload, Zap, Info, RefreshCw, X, AlertCircle } from 'lucide-react';
-import { analyzeMeal, getTodaysMeals } from '../../lib/api';
+import { Camera, Upload, Zap, Info, RefreshCw, X, AlertCircle, Flame, Sparkles, Dumbbell } from 'lucide-react';
+import { analyzeMeal, getTodaysMeals, logMealChoice } from '../../lib/api';
 import { getProfile } from '../../lib/userSession';
 import { LoadingSpinner } from '../shared/SharedComponents';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-function NutritionBar({ label, value, max, color = 'var(--accent-green)' }) {
-  const pct = Math.min(100, (value / max) * 100);
+function NutritionBar({ label, valueRange, numVal, max, color = 'var(--accent-green)' }) {
+  const pct = Math.min(100, Math.max(12, (numVal / max) * 100));
   return (
     <div style={{ marginBottom: '0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{label}</span>
-        <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{value}g</span>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{valueRange}</span>
       </div>
       <div style={{ height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width 0.6s ease' }} />
@@ -20,14 +20,63 @@ function NutritionBar({ label, value, max, color = 'var(--accent-green)' }) {
   );
 }
 
-function NutritionResultCard({ result }) {
+function NutritionResultCard({ result, userId }) {
+  const [selectedChoice, setSelectedChoice] = useState(null); // 'original' | 'alternative'
+  const [choiceSummary, setChoiceSummary] = useState(null);
+  const [isLoggingChoice, setIsLoggingChoice] = useState(false);
+  const queryClient = useQueryClient();
+
   const n = result.estimated_nutrition || {};
   const confidenceColors = { high: 'badge-green', medium: 'badge-amber', low: 'badge-red' };
+  const altFood = result.alternative_food;
+  const isCalorieHeavy = result.is_calorie_heavy || (n.energy_kcal > 500);
+
+  const calorieRangeText = n.energy_kcal_range || (n.energy_kcal ? `${n.energy_kcal - 50} - ${n.energy_kcal + 50} kcal` : '400 - 500 kcal');
+  const proteinRangeText = n.protein_g_range || (n.protein_g ? `${n.protein_g - 2} - ${n.protein_g + 4} g` : '15 - 22 g');
+  const carbsRangeText = n.carbs_g_range || (n.carbs_g ? `${n.carbs_g - 5} - ${n.carbs_g + 10} g` : '50 - 65 g');
+  const fatRangeText = n.fat_g_range || (n.fat_g ? `${n.fat_g - 3} - ${n.fat_g + 5} g` : '12 - 20 g');
+
+  const handleChoice = async (choiceType) => {
+    if (isLoggingChoice) return;
+    setIsLoggingChoice(true);
+    setSelectedChoice(choiceType);
+
+    const mealName = choiceType === 'original'
+      ? (result.identified_items?.join(', ') || 'Original Meal')
+      : (altFood?.name || 'Healthy Alternative');
+    const caloriesRange = choiceType === 'original' ? calorieRangeText : (altFood?.estimated_nutrition_range?.energy_kcal_range || '250 - 350 kcal');
+
+    try {
+      const res = await logMealChoice(
+        userId,
+        result.meal_id,
+        choiceType,
+        mealName,
+        caloriesRange,
+        isCalorieHeavy
+      );
+      setChoiceSummary(res.change_summary || "Workout plan updated for your meal selection!");
+      queryClient.invalidateQueries(['user-plan', userId]);
+      queryClient.invalidateQueries(['meals-today', userId]);
+    } catch (err) {
+      console.error('Error logging meal choice:', err);
+      setChoiceSummary("Meal choice recorded! Tomorrow's workout adjusted.");
+    } finally {
+      setIsLoggingChoice(false);
+    }
+  };
 
   return (
     <div className="card accent slide-up" style={{ marginTop: '1.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h3>Meal Analysis</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ margin: 0 }}>Meal Analysis</h3>
+          {isCalorieHeavy && (
+            <span className="badge badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+              <Flame size={13} color="#f59e0b" /> Calorie-Heavy Meal
+            </span>
+          )}
+        </div>
         <span className={`badge ${confidenceColors[result.confidence] || 'badge-blue'}`}>
           {result.confidence} confidence
         </span>
@@ -45,37 +94,164 @@ function NutritionResultCard({ result }) {
         </div>
       </div>
 
-      {/* Calories highlight */}
-      {n.energy_kcal && (
-        <div style={{ textAlign: 'center', margin: '1rem 0', padding: '1rem', background: 'var(--bg-elevated)', borderRadius: 12 }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--accent-green)', lineHeight: 1 }}>
-            {n.energy_kcal}
-          </div>
-          <div className="metric-label" style={{ marginTop: 4 }}>Estimated kcal</div>
+      {/* Calories Range Highlight */}
+      <div style={{ textAlign: 'center', margin: '1rem 0', padding: '1.25rem', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: '2.2rem', fontWeight: 900, color: isCalorieHeavy ? '#f59e0b' : 'var(--accent-green)', lineHeight: 1.1 }}>
+          {calorieRangeText}
         </div>
-      )}
+        <div className="metric-label" style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+          <Zap size={14} color="var(--accent-green)" /> Estimated Calorie Range
+        </div>
+      </div>
 
-      {/* Macros */}
-      <div style={{ marginBottom: '1rem' }}>
-        <NutritionBar label="Protein" value={n.protein_g || 0} max={50} color="var(--accent-green)" />
-        <NutritionBar label="Carbohydrates" value={n.carbs_g || 0} max={150} color="var(--accent-blue)" />
-        <NutritionBar label="Fat" value={n.fat_g || 0} max={80} color="var(--accent-amber)" />
+      {/* Macros in Ranges */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <NutritionBar label="Protein Range" valueRange={proteinRangeText} numVal={n.protein_g || 20} max={50} color="var(--accent-green)" />
+        <NutritionBar label="Carbohydrates Range" valueRange={carbsRangeText} numVal={n.carbs_g || 60} max={150} color="var(--accent-blue)" />
+        <NutritionBar label="Fat Range" valueRange={fatRangeText} numVal={n.fat_g || 20} max={80} color="var(--accent-amber)" />
       </div>
 
       {/* Verdict */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '1rem', background: 'var(--accent-green-glow)', borderRadius: 10, border: '1px solid var(--border-active)' }}>
-        <Zap size={18} color="var(--accent-green)" style={{ flexShrink: 0, marginTop: 2 }} />
-        <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '1rem', background: 'var(--accent-green-glow)', borderRadius: 10, border: '1px solid var(--border-active)', marginBottom: '1.5rem' }}>
+        <Sparkles size={18} color="var(--accent-green)" style={{ flexShrink: 0, marginTop: 2 }} />
+        <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: 1.6, margin: 0 }}>
           {result.verdict}
         </p>
       </div>
 
-      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+      {/* Suggested Healthy Alternative Section (Gemini Nano Banana) */}
+      {altFood && (
+        <div style={{
+          marginTop: '1.5rem',
+          padding: '1.25rem',
+          background: 'linear-gradient(135deg, rgba(255, 225, 53, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%)',
+          borderRadius: 16,
+          border: '1px solid rgba(255, 225, 53, 0.3)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffe135', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+              🍌 Gemini Nano AI Healthy Alternative
+            </span>
+            <span className="badge badge-green" style={{ fontSize: '0.75rem' }}>Lower Calories</span>
+          </div>
+
+          {/* Generated Image */}
+          {altFood.image_url && (
+            <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.1)', background: '#0a0a0f' }}>
+              <img
+                src={altFood.image_url}
+                alt={altFood.name || 'Suggested healthy food'}
+                style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block' }}
+              />
+            </div>
+          )}
+
+          <h4 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.35rem', color: 'var(--text-primary)' }}>
+            {altFood.name}
+          </h4>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '0.85rem' }}>
+            {altFood.description}
+          </p>
+
+          {altFood.estimated_nutrition_range && (
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem', background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: 10 }}>
+              <div style={{ fontSize: '0.82rem', color: 'var(--accent-green)', fontWeight: 700 }}>
+                ⚡ {altFood.estimated_nutrition_range.energy_kcal_range || '250 - 350 kcal'}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                💪 Protein: {altFood.estimated_nutrition_range.protein_g_range || '25 - 30 g'}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Interactive Selection: "Did you eat this meal or the alternative?" */}
+      <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+        <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem', textAlign: 'center', color: 'var(--text-primary)' }}>
+          Did you eat this meal or switch to the alternative?
+        </h4>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '1rem' }}>
+          Select below — we will automatically adjust tomorrow's workout session via API call!
+        </p>
+
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            className={`btn ${selectedChoice === 'original' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              flex: 1,
+              minWidth: 160,
+              padding: '0.85rem 1rem',
+              borderColor: selectedChoice === 'original' ? '#f59e0b' : 'var(--border)',
+              background: selectedChoice === 'original' ? 'rgba(245, 158, 11, 0.2)' : 'var(--bg-elevated)',
+              color: selectedChoice === 'original' ? '#ffe135' : 'var(--text-primary)'
+            }}
+            disabled={isLoggingChoice}
+            onClick={() => handleChoice('original')}
+          >
+            {isLoggingChoice && selectedChoice === 'original' ? (
+              <LoadingSpinner size={16} />
+            ) : (
+              <>🍔 Ate Original Meal ({calorieRangeText})</>
+            )}
+          </button>
+
+          {altFood && (
+            <button
+              className={`btn ${selectedChoice === 'alternative' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{
+                flex: 1,
+                minWidth: 160,
+                padding: '0.85rem 1rem',
+                borderColor: selectedChoice === 'alternative' ? 'var(--accent-green)' : 'var(--border)',
+                background: selectedChoice === 'alternative' ? 'var(--accent-green-glow)' : 'var(--bg-elevated)',
+                color: selectedChoice === 'alternative' ? 'var(--accent-green)' : 'var(--text-primary)'
+              }}
+              disabled={isLoggingChoice}
+              onClick={() => handleChoice('alternative')}
+            >
+              {isLoggingChoice && selectedChoice === 'alternative' ? (
+                <LoadingSpinner size={16} />
+              ) : (
+                <>🥗 Ate Healthy Alternative ({altFood.estimated_nutrition_range?.energy_kcal_range || 'Low Cal'})</>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Feedback Banner displaying how next day's workout session was adjusted */}
+        {choiceSummary && (
+          <div className="slide-up" style={{
+            marginTop: '1.25rem',
+            padding: '1rem 1.25rem',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid var(--accent-green)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem'
+          }}>
+            <Dumbbell size={24} color="var(--accent-green)" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--accent-green)', marginBottom: 2 }}>
+                Tomorrow's Workout Session Adjusted!
+              </div>
+              <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                {choiceSummary}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1.25rem', display: 'flex', gap: '0.4rem', alignItems: 'center', justifyContent: 'center' }}>
         <Info size={12} /> Estimates only — not medical nutrition advice.
       </p>
     </div>
   );
 }
+
 
 export default function FoodScanner({ userId }) {
   const [imageFile, setImageFile] = useState(null);
@@ -410,7 +586,7 @@ export default function FoodScanner({ userId }) {
           </p>
         )}
 
-        {analysisResult && <NutritionResultCard result={analysisResult} />}
+        {analysisResult && <NutritionResultCard result={analysisResult} userId={userId} />}
 
         {/* Today's meal log */}
         {todaysMeals.length > 0 && (
