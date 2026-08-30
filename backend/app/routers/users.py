@@ -13,6 +13,13 @@ async def onboard_user(body: OnboardRequest):
     user_id = str(uuid.uuid4())
     profile = body.model_dump()
 
+    # Normalize height if entered in feet or meters
+    h = profile.get("height_cm", 170.0)
+    if h and h < 10:
+        profile["height_cm"] = round(h * 30.48, 1)
+    elif h and h < 30:
+        profile["height_cm"] = round(h * 100, 1)
+
     # Save user profile
     db.upsert_user(user_id, profile)
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, ArrowLeft, Dumbbell, Target, Clock, User, AlertTriangle } from 'lucide-react';
 import { onboardUser } from '../../lib/api';
-import { getUserId, saveProfile, savePlan } from '../../lib/userSession';
+import { getUserId, saveUserId, saveProfile, savePlan, markOnboarded } from '../../lib/userSession';
 import { LoadingSpinner } from '../shared/SharedComponents';
 
 const EQUIPMENT_OPTIONS = [
@@ -80,24 +80,35 @@ export default function OnboardingFlow({ onComplete }) {
     setLoading(true);
     setError(null);
     try {
-      const userId = getUserId();
+      let height = Number(form.height_cm) || 170;
+      // If entered in feet (e.g. 5.8 or 6.0), convert to cm
+      if (height < 10) {
+        height = Math.round(height * 30.48);
+      } else if (height < 30) {
+        // If entered in meters (e.g. 1.75)
+        height = Math.round(height * 100);
+      }
+
       const profile = {
         ...form,
-        age: Number(form.age),
-        height_cm: Number(form.height_cm),
-        weight_kg: Number(form.weight_kg),
-        available_time_minutes: Number(form.available_time_minutes),
-        days_per_week: Number(form.days_per_week),
+        age: Number(form.age) || 25,
+        height_cm: height,
+        weight_kg: Number(form.weight_kg) || 70,
+        available_time_minutes: Number(form.available_time_minutes) || 30,
+        days_per_week: Number(form.days_per_week) || 3,
+        available_equipment: form.available_equipment?.length ? form.available_equipment : ['bodyweight_only'],
         constraints: form.constraints.filter((c) => c !== 'none').length
           ? form.constraints.filter((c) => c !== 'none')
           : [],
       };
       const result = await onboardUser(profile);
+      saveUserId(result.user_id);
+      markOnboarded();
       saveProfile(profile);
       savePlan(result.plan);
       onComplete({ userId: result.user_id, plan: result.plan });
     } catch (e) {
-      setError(e?.response?.data?.detail?.message || 'Something went wrong. Please try again.');
+      setError(e?.message || 'Something went wrong. Please check your details and try again.');
     } finally {
       setLoading(false);
     }

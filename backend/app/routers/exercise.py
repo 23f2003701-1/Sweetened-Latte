@@ -4,11 +4,14 @@ from app.models.schemas import (
     SessionStartRequest,
     SetCompleteRequest,
     SessionEndRequest,
+    RepFeedbackRequest,
+    RepFeedbackResponse,
     SuccessResponse,
 )
 from app.services import gemini, supabase_client as db
 
 router = APIRouter(prefix="/exercise", tags=["exercise"])
+
 
 
 @router.post("/session/start", response_model=SuccessResponse)
@@ -27,7 +30,8 @@ async def set_complete(session_id: str, body: SetCompleteRequest):
         "avg_depth_score": body.avg_depth_score,
         "avg_tempo_seconds": body.avg_tempo_seconds,
         "alignment_issues_count": body.alignment_issues_count,
-        "per_rep": [r.model_dump() for r in body.per_rep]
+        "per_rep": [r.model_dump() for r in body.per_rep],
+        "set_summary": body.set_summary,  # Rich per-rep data from engine
     }
 
     try:
@@ -91,3 +95,30 @@ async def get_session(session_id: str):
     if session is None:
         raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Session not found"})
     return SuccessResponse(data=session)
+
+
+@router.post("/rep-feedback", response_model=RepFeedbackResponse)
+async def rep_feedback(body: RepFeedbackRequest):
+    """Accept single-rep metrics → call Gemini → return short coaching phrase.
+
+    This is intentionally lightweight (tight 10 s timeout, minimal tokens) so
+    the browser can call it right after each completed rep without perceptible lag.
+    """
+    rep_data = {
+        "rep_number": body.rep_number,
+        "depth_score": body.depth_score,
+        "alignment_ok": body.alignment_ok,
+        "back_angle": body.back_angle,
+        "elbow_angle": body.elbow_angle,
+        "body_line_angle": body.body_line_angle,
+        "front_knee_angle": body.front_knee_angle,
+    }
+    # Remove None values so Gemini prompt stays compact
+    rep_data = {k: v for k, v in rep_data.items() if v is not None}
+
+    try:
+        result = await gemini.coach_rep(body.exercise, rep_data)
+        return RepFeedbackResponse(phrase=result["phrase"])
+    except Exception as e:
+        print(f"[rep-feedback] Unexpected error: {e}")
+        return RepFeedbackResponse(phrase="Good rep! Keep going.")

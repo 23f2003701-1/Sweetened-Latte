@@ -432,20 +432,70 @@ Return full plan JSON matching original structure plus:
 
 
 async def coach_set(set_data: dict) -> dict:
-    system = (
-        "You are a supportive fitness coach. Analyze ONE set of squats. Give friendly, "
-        "specific, non-technical feedback. Point out one thing done well and one thing to focus on. "
-        "Avoid jargon — use plain terms like 'your knees moved inward' instead of 'valgus'."
-    )
-    prompt = f"""Set data: {json.dumps(set_data)}
+    """Analyze a completed set with per-rep mistake identification.
 
-Return JSON:
-{{
-  "headline": "one short encouraging sentence",
-  "what_went_well": "plain language, specific to the data",
-  "focus_next_set": "plain language, specific to the data",
-  "form_score": 0
-}}"""
+    If the frontend provides a `set_summary` from the engine (with detailed
+    per-rep metrics like depth, alignment, timing), we include it so Gemini
+    can point out exactly which reps had issues and give targeted corrections.
+    """
+    exercise = set_data.get("exercise", "Squats")
+    set_summary = set_data.get("set_summary")  # Rich data from engine
+
+    system = (
+        f"You are a supportive, data-driven fitness coach. Analyze ONE set of {exercise}. "
+        "You have access to detailed per-rep metrics. Your job is to:\n"
+        "1. Identify what went well across the set.\n"
+        "2. Spot SPECIFIC reps where form broke down (e.g. 'On reps 3 and 5, your depth was only 40%').\n"
+        "3. Give ONE clear, actionable correction for the NEXT set based on the pattern you see.\n"
+        "4. Be encouraging but honest. Use plain language — no jargon.\n"
+        "5. If form was great, say so and suggest a small progression.\n\n"
+        "Metric context:\n"
+    )
+
+    # Add exercise-specific metric explanations
+    if exercise == "Squats":
+        system += (
+            "- depth: 0.0 = standing, 1.0 = very deep squat. Target is ≥0.7 for a good squat.\n"
+            "- alignment: 1.0 = knees perfectly over ankles, lower = knees caving. Target is ≥0.75.\n"
+            "- min_knee_angle: smallest knee bend angle. ~90° is parallel. Lower = deeper.\n"
+            "- duration_ms: time for one rep. 2000-4000ms is a controlled pace.\n"
+        )
+    elif exercise == "Lunges":
+        system += (
+            "- depth: 0.0 = standing, 1.0 = deep lunge. Target is ≥0.7.\n"
+            "- alignment: 1.0 = front knee over ankle, lower = knee past toes. Target is ≥0.75.\n"
+            "- min_front_knee_angle: front knee bend. ~90° is ideal.\n"
+            "- back_angle: torso lean from vertical. <35° is good, >45° is leaning too much.\n"
+        )
+    elif exercise == "Bicep Curls":
+        system += (
+            "- curl_depth: 0.0 = arm extended, 1.0 = fully curled. Target is ≥0.8.\n"
+            "- min_elbow_angle: smallest elbow angle. <50° is a full curl.\n"
+            "- back_angle: how much the back swings. <25° is good, >40° means using momentum.\n"
+            "- back_stability: 1.0 = stable, lower = swinging. Target is ≥0.6.\n"
+        )
+
+    # Build the prompt with all available data
+    prompt_parts = [f"Exercise: {exercise}\n"]
+
+    if set_summary:
+        prompt_parts.append(f"Detailed set summary from pose tracker:\n{json.dumps(set_summary, indent=2)}\n")
+    else:
+        prompt_parts.append(f"Aggregated set data:\n{json.dumps(set_data, indent=2)}\n")
+
+    prompt_parts.append(
+        "\nAnalyze this data. Call out SPECIFIC rep numbers where issues occurred. "
+        "Tell the user what pattern you see and what to fix in the upcoming set.\n\n"
+        "Return JSON:\n"
+        "{\n"
+        '  "headline": "one short encouraging sentence summarizing the set",\n'
+        '  "what_went_well": "specific praise referencing the data — mention rep numbers if relevant",\n'
+        '  "focus_next_set": "specific correction for next set — reference which reps had the issue and what to do differently",\n'
+        '  "form_score": 0\n'
+        "}"
+    )
+
+    prompt = "\n".join(prompt_parts)
 
     try:
         return await _call_gemini(system, prompt)
@@ -515,4 +565,87 @@ Return JSON strictly in this schema:
         )
         fallback["alternative_food"] = alt
         return fallback
+
+# ── Per-Rep Coaching ──────────────────────────────────────────────────────────
+
+_REP_FALLBACKS = {
+    "Bicep Curls": [
+        "Great curl! Keep the elbow steady.",
+        "Squeeze at the top for full activation.",
+        "Nice rep — control the lowering phase.",
+    ],
+    "Push-Ups": [
+        "Keep your core tight throughout.",
+        "Great push-up! Maintain a straight body line.",
+        "Nice depth — control the descent.",
+    ],
+    "Squats": [
+        "Good squat! Drive through your heels.",
+        "Try going a little deeper next rep.",
+        "Chest up, knees tracking over toes.",
+    ],
+    "Lunges": [
+        "Good lunge! Keep your front knee over ankle.",
+        "Stand tall — watch that torso lean.",
+        "Nice step! Push through the front heel.",
+    ],
+}
+
+import random
+
+def _fallback_rep_phrase(exercise: str) -> str:
+    phrases = _REP_FALLBACKS.get(exercise, ["Good rep! Keep going."])
+    return random.choice(phrases)
+
+
+async def coach_rep(exercise: str, rep_data: dict) -> dict:
+    """Return a single short coaching phrase for one completed rep.
+
+    Optimised for speed: tight timeout (10 s), minimal tokens.
+    Falls back deterministically if Gemini is unavailable.
+    """
+    system = (
+        "You are a concise fitness coach. Given one completed rep's metrics, "
+        "respond with ONLY a valid JSON object containing a single field 'phrase'. "
+        "The phrase must be a direct, friendly coaching tip in 8 words or fewer. "
+        "No jargon. No markdown."
+    )
+
+    # Build a compact, exercise-aware prompt
+    notes = []
+    if rep_data.get("depth_score") is not None:
+        d = rep_data["depth_score"]
+        notes.append(f"depth score {int(d)}/100 ({'good' if d >= 70 else 'shallow'})")
+    if rep_data.get("alignment_ok") is not None:
+        notes.append("knees aligned" if rep_data["alignment_ok"] else "knees caved inward")
+    if rep_data.get("back_angle") is not None:
+        ba = rep_data["back_angle"]
+        notes.append(f"back angle {int(ba)}° from vertical ({'upright' if ba < 45 else 'leaning forward'})")
+    if rep_data.get("elbow_angle") is not None:
+        ea = rep_data["elbow_angle"]
+        notes.append(f"elbow angle {int(ea)}° ({'full curl' if ea < 50 else 'partial curl'})")
+    if rep_data.get("body_line_angle") is not None:
+        bl = rep_data["body_line_angle"]
+        notes.append(f"body line angle {int(bl)}° ({'straight' if bl < 20 else 'sagging'})")
+    if rep_data.get("front_knee_angle") is not None:
+        fk = rep_data["front_knee_angle"]
+        notes.append(f"front knee angle {int(fk)}°")
+
+    observations = "; ".join(notes) if notes else "no specific issues detected"
+    prompt = (
+        f'Exercise: {exercise}. Rep {rep_data.get("rep_number", 1)} observation: {observations}. '
+        f'Return JSON: {{"phrase": "your tip here"}}'
+    )
+
+    try:
+        result = await _call_gemini(system, prompt, timeout=10)
+        phrase = result.get("phrase", "").strip()
+        if not phrase or len(phrase.split()) > 15:
+            raise ValueError("phrase too long or empty")
+        return {"phrase": phrase}
+    except Exception as e:
+        print(f"[Gemini] Rep coaching failed: {e}. Using deterministic fallback.")
+        return {"phrase": _fallback_rep_phrase(exercise)}
+
+
 
