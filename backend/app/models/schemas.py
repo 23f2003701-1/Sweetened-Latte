@@ -24,16 +24,16 @@ class ErrorResponse(BaseModel):
 # ── User / Onboarding ──────────────────────────────────────────────────────────
 
 class OnboardRequest(BaseModel):
-    age: int = Field(..., ge=10, le=100)
-    height_cm: float = Field(..., ge=100, le=250)
-    weight_kg: float = Field(..., ge=20, le=300)
-    sex: str = Field(..., pattern="^(male|female|other|prefer_not_to_say)$")
-    fitness_experience: str = Field(..., pattern="^(beginner|intermediate|advanced)$")
-    goal: str  # lose_weight | build_muscle | general_fitness | improve_endurance | improve_flexibility
-    dietary_preference: str  # vegetarian | non_vegetarian | vegan | eggetarian | no_preference
-    available_equipment: List[str] = Field(default_factory=list)
-    available_time_minutes: int = Field(..., ge=10, le=180)
-    days_per_week: int = Field(..., ge=1, le=7)
+    age: Optional[int] = Field(default=25, ge=1, le=120)
+    height_cm: Optional[float] = Field(default=170.0, ge=0.5, le=300)
+    weight_kg: Optional[float] = Field(default=70.0, ge=1, le=500)
+    sex: Optional[str] = Field(default="prefer_not_to_say")
+    fitness_experience: Optional[str] = Field(default="beginner")
+    goal: Optional[str] = Field(default="general_fitness")
+    dietary_preference: Optional[str] = Field(default="no_preference")
+    available_equipment: List[str] = Field(default_factory=lambda: ["bodyweight_only"])
+    available_time_minutes: Optional[int] = Field(default=30, ge=1, le=300)
+    days_per_week: Optional[int] = Field(default=3, ge=1, le=7)
     constraints: List[str] = Field(default_factory=list)
 
 
@@ -66,6 +66,7 @@ class SetCompleteRequest(BaseModel):
     avg_tempo_seconds: float
     alignment_issues_count: int
     per_rep: List[RepData]
+    set_summary: Optional[dict] = None
 
 
 class SessionStartRequest(BaseModel):
@@ -77,6 +78,25 @@ class SessionEndRequest(BaseModel):
     user_id: str
     session_notes: Optional[str] = ""
     user_feedback: Optional[str] = ""
+
+
+# ── Per-Rep Gemini Feedback ────────────────────────────────────────────────────
+
+class RepFeedbackRequest(BaseModel):
+    exercise: str  # "Bicep Curls" | "Push-Ups" | "Squats" | "Lunges"
+    rep_number: int = 1
+    # Common fields
+    depth_score: Optional[float] = None      # 0-100 (squats / lunges)
+    alignment_ok: Optional[bool] = True
+    back_angle: Optional[float] = None       # degrees from vertical
+    # Exercise-specific
+    elbow_angle: Optional[float] = None      # bicep curls / push-ups (degrees)
+    body_line_angle: Optional[float] = None  # push-up straightness
+    front_knee_angle: Optional[float] = None # lunges
+
+
+class RepFeedbackResponse(BaseModel):
+    phrase: str  # Short coaching phrase ≤ 12 words
 
 
 # ── Meals ──────────────────────────────────────────────────────────────────────
