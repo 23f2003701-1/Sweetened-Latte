@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Supported models in Google GenAI SDK
-PRIMARY_MODEL = "gemini-2.0-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
+PRIMARY_MODEL = "gemini-3.5-flash"
+FALLBACK_MODEL = "gemini-3.6-flash"
 
 
 def _get_api_key() -> str:
@@ -71,11 +71,11 @@ async def _call_gemini(system: str, prompt: str, timeout: int = 15) -> dict:
     try:
         return await _attempt(PRIMARY_MODEL)
     except Exception as e:
-        print(f"[Gemini] Primary model ({PRIMARY_MODEL}) failed: {e}. Trying fallback ({FALLBACK_MODEL})...")
+        print(f"[Gemini Text] Primary model ({PRIMARY_MODEL}) failed: {e}. Trying fallback ({FALLBACK_MODEL})...")
         try:
             return await _attempt(FALLBACK_MODEL)
         except Exception as e2:
-            print(f"[Gemini] Fallback failed: {e2}")
+            print(f"[Gemini Text] Fallback failed: {e2}")
             raise
 
 
@@ -88,6 +88,7 @@ async def _call_gemini_vision(system: str, prompt: str, image_bytes: bytes, mime
     from google.genai import types
 
     client = _get_client()
+    clean_mime = mime_type.split(";")[0].strip() if mime_type else "image/jpeg"
 
     async def _attempt(model_name: str, extra: str = "") -> dict:
         response = await asyncio.wait_for(
@@ -95,7 +96,7 @@ async def _call_gemini_vision(system: str, prompt: str, image_bytes: bytes, mime
                 client.models.generate_content,
                 model=model_name,
                 contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    types.Part.from_bytes(data=image_bytes, mime_type=clean_mime),
                     prompt + extra,
                 ],
                 config=types.GenerateContentConfig(
@@ -103,18 +104,20 @@ async def _call_gemini_vision(system: str, prompt: str, image_bytes: bytes, mime
                     response_mime_type="application/json",
                 )
             ),
-            timeout=25
+            timeout=30
         )
         return _parse_json_response(response.text)
 
     try:
         return await _attempt(PRIMARY_MODEL)
     except Exception as e:
-        print(f"[Gemini Vision] Primary failed: {e}. Trying fallback...")
-        return await _attempt(FALLBACK_MODEL)
+        print(f"[Gemini Vision] Primary ({PRIMARY_MODEL}) failed: {e}. Trying fallback ({FALLBACK_MODEL})...")
+        try:
+            return await _attempt(FALLBACK_MODEL)
+        except Exception as e2:
+            print(f"[Gemini Vision] Fallback failed: {e2}")
+            raise
 
-
-# ── Mock fallbacks ─────────────────────────────────────────────────────────────
 
 def _mock_plan(profile: dict) -> dict:
     return {
@@ -192,28 +195,38 @@ def _mock_meal_analysis() -> dict:
 
 async def generate_plan(profile: dict) -> dict:
     system = (
-        "You are a certified fitness coach writing for a general audience. Never use "
+        "You are a certified fitness coach and nutritionist writing for a general audience. Never use "
         "technical jargon. Keep tone encouraging, concrete, and specific. Always respond "
         "with valid JSON matching the schema provided. Do not include markdown or text outside the JSON."
     )
+    
+    # Format lists nicely
+    equip_list = profile.get('available_equipment', [])
+    equip_str = ", ".join(equip_list) if equip_list else "None (bodyweight only)"
+    
+    constraints_list = profile.get('constraints', [])
+    constraints_str = ", ".join(constraints_list) if constraints_list else "None"
+
     prompt = f"""Create a personalized weekly workout plan for this person:
 
 Age: {profile.get('age')}
+Sex: {profile.get('sex', 'Not specified')}
 Height: {profile.get('height_cm')} cm
 Weight: {profile.get('weight_kg')} kg
 Experience: {profile.get('fitness_experience')}
 Goal: {profile.get('goal')}
-Equipment available: {profile.get('available_equipment')}
+Dietary preference: {profile.get('dietary_preference', 'no_preference')}
+Equipment available: {equip_str}
 Time per session: {profile.get('available_time_minutes')} minutes
 Days per week: {profile.get('days_per_week')}
-Constraints/injuries: {profile.get('constraints')}
+Constraints/injuries: {constraints_str}
 
 Rules:
 - Use only the equipment listed.
-- Respect all constraints.
+- Respect all constraints and injuries strictly.
 - Keep exercise names simple and common.
 - Give plain-language reasons for each exercise.
-- Include nutrition tips.
+- Include nutrition tips tailored to their dietary preference ({profile.get('dietary_preference', 'no_preference')}) and goal.
 
 Return JSON:
 {{

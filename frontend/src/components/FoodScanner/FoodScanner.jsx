@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Camera, Upload, Zap, Info } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Camera, Upload, Zap, Info, RefreshCw, X, AlertCircle } from 'lucide-react';
 import { analyzeMeal, getTodaysMeals } from '../../lib/api';
 import { getProfile } from '../../lib/userSession';
 import { LoadingSpinner } from '../shared/SharedComponents';
@@ -80,10 +80,15 @@ function NutritionResultCard({ result }) {
 export default function FoodScanner({ userId }) {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [facingMode, setFacingMode] = useState('environment'); // environment | user
+  const [analysisResult, setAnalysisResult] = useState(null);
+
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
+  const streamRef = useRef(null);
   const profile = getProfile();
 
   const { data: todaysMealsData } = useQuery({
@@ -103,12 +108,104 @@ export default function FoodScanner({ userId }) {
     onSuccess: (data) => setAnalysisResult(data),
   });
 
+  // Stop camera stream tracks
+  const stopCameraStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  // Start live camera
+  const startCamera = useCallback(async (mode = facingMode) => {
+    stopCameraStream();
+    setCameraError(null);
+    setCameraLoading(true);
+    setCameraOpen(true);
+
+    try {
+      const constraints = {
+        video: {
+          facingMode: mode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraLoading(false);
+    } catch (err) {
+      console.error('Camera open error:', err);
+      setCameraLoading(false);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera permission denied. Please allow camera access or choose a file.');
+      } else {
+        setCameraError(`Camera error: ${err.message || 'Unable to access camera'}`);
+      }
+    }
+  }, [facingMode, stopCameraStream]);
+
+  // Clean up stream on unmount
+  useEffect(() => {
+    return () => {
+      stopCameraStream();
+    };
+  }, [stopCameraStream]);
+
+  // Capture frame from video
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+
+    // If front camera, mirror image
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `meal-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(blob));
+      setAnalysisResult(null);
+      stopCameraStream();
+      setCameraOpen(false);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const closeCamera = () => {
+    stopCameraStream();
+    setCameraOpen(false);
+    setCameraError(null);
+  };
+
+  const toggleFacingMode = () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
     setAnalysisResult(null);
+    closeCamera();
   };
 
   return (
@@ -117,66 +214,193 @@ export default function FoodScanner({ userId }) {
         <div style={{ marginBottom: '1.5rem' }}>
           <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>Can I Eat This?</h1>
           <p style={{ color: 'var(--text-secondary)' }}>
-            Take a photo of your meal for an instant AI nutrition verdict.
+            Take a photo of your meal for an instant AI nutrition verdict with Gemini Multimodal.
           </p>
         </div>
 
-        {/* Upload area */}
+        {/* Live Camera Viewfinder or Image Upload/Preview Box */}
         <div
           id="food-upload-zone"
-          onClick={() => fileInputRef.current?.click()}
           style={{
-            border: `2px dashed ${imagePreview ? 'var(--border-active)' : 'var(--border)'}`,
+            border: `2px dashed ${imagePreview || cameraOpen ? 'var(--border-active)' : 'var(--border)'}`,
             borderRadius: 'var(--radius-xl)',
-            minHeight: 240,
+            minHeight: 280,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer',
             overflow: 'hidden',
             position: 'relative',
-            background: 'var(--bg-card)',
+            background: '#0a0a0f',
             transition: 'border-color 0.2s',
           }}
         >
-          {imagePreview ? (
-            <img src={imagePreview} alt="Meal preview"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', maxHeight: 360 }} />
+          {cameraOpen ? (
+            <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+              {cameraLoading && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,10,15,0.85)', gap: '1rem' }}>
+                  <LoadingSpinner size={36} />
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Starting camera…</p>
+                </div>
+              )}
+
+              {cameraError ? (
+                <div style={{ padding: '2rem', textAlign: 'center' }}>
+                  <AlertCircle size={36} color="var(--accent-red)" style={{ margin: '0 auto 0.75rem' }} />
+                  <p style={{ color: 'var(--accent-red)', fontSize: '0.9rem', marginBottom: '1rem' }}>{cameraError}</p>
+                  <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
+                    <Upload size={14} /> Upload from device instead
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                    }}
+                  />
+
+                  {/* Viewfinder Reticle Overlay */}
+                  <div style={{
+                    position: 'absolute',
+                    inset: '10%',
+                    border: '2px solid rgba(0, 230, 118, 0.4)',
+                    borderRadius: 16,
+                    pointerEvents: 'none',
+                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.25)',
+                  }} />
+
+                  {/* In-Camera Control Toolbar */}
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '1rem',
+                    left: 0,
+                    right: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '1.25rem',
+                    zIndex: 10,
+                  }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
+                      onClick={closeCamera}
+                      title="Cancel"
+                    >
+                      <X size={20} />
+                    </button>
+
+                    <button
+                      id="btn-snap-photo"
+                      className="btn btn-primary"
+                      style={{
+                        borderRadius: '50%',
+                        width: 60,
+                        height: 60,
+                        padding: 0,
+                        boxShadow: '0 0 20px rgba(0,230,118,0.5)',
+                      }}
+                      onClick={capturePhoto}
+                      title="Take Photo"
+                    >
+                      <Camera size={26} color="#0a0a0f" />
+                    </button>
+
+                    <button
+                      className="btn btn-secondary"
+                      style={{ borderRadius: '50%', width: 44, height: 44, padding: 0 }}
+                      onClick={toggleFacingMode}
+                      title="Switch Camera"
+                    >
+                      <RefreshCw size={18} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : imagePreview ? (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              <img
+                src={imagePreview}
+                alt="Meal preview"
+                style={{ width: '100%', maxHeight: 360, objectFit: 'cover', display: 'block' }}
+              />
+            </div>
           ) : (
-            <>
-              <Upload size={40} color="var(--text-muted)" strokeWidth={1.5} />
-              <p style={{ color: 'var(--text-muted)', marginTop: '1rem', fontSize: '0.9rem' }}>
-                Click to upload a meal photo
+            <div
+              style={{ padding: '2.5rem 1.5rem', textAlign: 'center', cursor: 'pointer' }}
+              onClick={() => startCamera()}
+            >
+              <div style={{
+                width: 64, height: 64, borderRadius: '50%',
+                background: 'var(--bg-elevated)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'
+              }}>
+                <Camera size={32} color="var(--accent-green)" />
+              </div>
+              <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem' }}>
+                Open Camera or Upload Photo
               </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>
-                JPG, PNG, WEBP accepted
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 4 }}>
+                Take a live photo of your meal or select an image file
               </p>
-            </>
+            </div>
           )}
+
           <input
             id="food-file-input"
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-          <button id="btn-camera-capture" className="btn btn-secondary" style={{ flex: 1 }}
-            onClick={() => fileInputRef.current?.click()}>
-            <Camera size={16} /> {imagePreview ? 'Retake' : 'Take Photo'}
+        {/* Primary Action Buttons */}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+          {!cameraOpen && (
+            <button
+              id="btn-open-camera"
+              className="btn btn-secondary"
+              style={{ flex: 1, minWidth: 140 }}
+              onClick={() => startCamera()}
+            >
+              <Camera size={18} color="var(--accent-green)" />
+              {imagePreview ? 'Retake with Camera' : 'Take Photo'}
+            </button>
+          )}
+
+          <button
+            id="btn-upload-file"
+            className="btn btn-secondary"
+            style={{ flex: 1, minWidth: 140 }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={18} />
+            Upload File
           </button>
-          <button id="btn-analyze-meal" className="btn btn-primary" style={{ flex: 2 }}
+
+          <button
+            id="btn-analyze-meal"
+            className="btn btn-primary"
+            style={{ flex: 2, minWidth: 200 }}
             onClick={() => analyzeMutation.mutate()}
-            disabled={!imageFile || analyzeMutation.isPending}>
-            {analyzeMutation.isPending
-              ? <><LoadingSpinner size={18} color="#0a0a0f" /> Analysing with Gemini…</>
-              : <><Zap size={18} /> Analyze Meal</>}
+            disabled={!imageFile || analyzeMutation.isPending || cameraOpen}
+          >
+            {analyzeMutation.isPending ? (
+              <><LoadingSpinner size={18} color="#0a0a0f" /> Analysing with Gemini…</>
+            ) : (
+              <><Zap size={18} /> Analyze Meal</>
+            )}
           </button>
         </div>
 
@@ -213,3 +437,4 @@ export default function FoodScanner({ userId }) {
     </div>
   );
 }
+
