@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Supported models in Google GenAI SDK
-PRIMARY_MODEL = "gemini-3.5-flash"
+PRIMARY_MODEL = "gemini-3.5-flash-lite"
 FALLBACK_MODEL = "gemini-3.6-flash"
 
 
@@ -258,6 +258,7 @@ async def generate_alternative_food_image(prompt: str, food_name: str = "", desc
 async def generate_plan(profile: dict) -> dict:
     from datetime import datetime
     today_name = datetime.now().strftime("%A")
+    days_count = min(7, max(1, int(profile.get('days_per_week', 3))))
 
     system = (
         "You are a certified fitness coach and nutritionist writing for a general audience. Never use "
@@ -286,11 +287,12 @@ Goal: {profile.get('goal')}
 Dietary preference: {profile.get('dietary_preference', 'no_preference')}
 Equipment available: {equip_str}
 Time per session: {profile.get('available_time_minutes')} minutes
-Days per week: {profile.get('days_per_week')}
+Target frequency: EXACTLY {days_count} days per week (do NOT create 7 days)
 Constraints/injuries: {constraints_str}{user_notes}
 
 Rules:
-- CRITICAL RULE: The weekly_schedule MUST start with TODAY ({today_name}) as Day 1 in the list, followed by the remaining workout days across the week.
+- STRICT FREQUENCY: The "weekly_schedule" array MUST contain EXACTLY {days_count} workout days (NOT 7 days).
+- Day 1 MUST be TODAY ({today_name}), followed by the remaining {days_count - 1} workout days spaced across the week.
 - Use only the equipment listed.
 - Respect all constraints and injuries strictly.
 - Keep exercise names simple and common.
@@ -299,7 +301,7 @@ Rules:
 
 Return JSON:
 {{
-  "plan_summary": "1-2 sentence friendly overview mentioning starting today on {today_name}",
+  "plan_summary": "1-2 sentence friendly overview mentioning starting today on {today_name} with a {days_count}-day routine",
   "weekly_schedule": [
     {{
       "day": "{today_name}",
@@ -320,7 +322,10 @@ Return JSON:
 }}"""
 
     try:
-        return await _call_gemini(system, prompt)
+        plan = await _call_gemini(system, prompt)
+        if plan.get("weekly_schedule") and len(plan["weekly_schedule"]) > days_count:
+            plan["weekly_schedule"] = plan["weekly_schedule"][:days_count]
+        return plan
     except Exception as e:
         print(f"[Gemini] Plan generation failed: {e}. Using fallback plan.")
         return _mock_plan(profile)
