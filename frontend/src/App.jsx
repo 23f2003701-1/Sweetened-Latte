@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LayoutDashboard, Dumbbell, Utensils, Droplets, LogOut } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Utensils, Droplets, LogOut, ArrowLeftRight } from 'lucide-react';
+import ModeSelectionScreen from './components/ModeSelection/ModeSelectionScreen';
+import PhysioFlow from './components/Physio/PhysioFlow';
 import OnboardingFlow from './components/OnboardingFlow/OnboardingFlow';
 import Dashboard from './components/Dashboard/Dashboard';
 import ExerciseSession from './components/ExerciseSession/ExerciseSession';
@@ -26,6 +28,7 @@ const TABS = [
 ];
 
 function App() {
+  const [appMode, setAppMode] = useState(null); // null (mode selection) | 'workout' | 'physio'
   const [onboarded, setOnboarded] = useState(hasOnboarded());
   const [userId, setUserId] = useState(getUserId());
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -58,6 +61,17 @@ function App() {
     }
   };
 
+  // 1. Mode Selection Screen (App Entry)
+  if (appMode === null) {
+    return <ModeSelectionScreen onSelectMode={(mode) => setAppMode(mode)} />;
+  }
+
+  // 2. Physiotherapy Mode Flow
+  if (appMode === 'physio') {
+    return <PhysioFlow onSwitchMode={() => setAppMode(null)} />;
+  }
+
+  // 3. Workout Mode Flow — Existing Onboarding check
   if (!onboarded) {
     return <OnboardingFlow onComplete={handleOnboardComplete} />;
   }
@@ -67,7 +81,7 @@ function App() {
       {/* Navbar */}
       <nav className="navbar">
         <div className="navbar-inner">
-          <div className="logo">
+          <div className="logo" style={{ cursor: 'pointer' }} onClick={() => setAppMode(null)}>
             Ziddi<span>Fit</span>
           </div>
           <div className="nav-tabs">
@@ -86,9 +100,20 @@ function App() {
               );
             })}
           </div>
-          <button id="btn-reset" className="btn btn-ghost btn-sm" onClick={handleReset} title="Reset session">
-            <LogOut size={16} />
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              id="btn-switch-mode"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setAppMode(null)}
+              title="Switch Mode"
+              style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <ArrowLeftRight size={14} /> Mode
+            </button>
+            <button id="btn-reset" className="btn btn-ghost btn-sm" onClick={handleReset} title="Reset session">
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -164,3 +189,4 @@ export default function Root() {
     </QueryClientProvider>
   );
 }
+

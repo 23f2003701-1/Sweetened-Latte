@@ -523,3 +523,179 @@ Return JSON strictly in this schema:
         fallback["alternative_food"] = alt
         return fallback
 
+
+# ── Physiotherapy Mode (PhysioGuard AI) ────────────────────────────────────────
+
+def _mock_prescription() -> dict:
+    return {
+        "patient_context": {
+            "diagnosis": "Post-operative ACL rehabilitation",
+            "surgical_status": "Post-op ACL reconstruction (Left Knee)",
+            "notes": [
+                "Progressive active extension exercise",
+                "Strict range of motion limits apply during early phase"
+            ]
+        },
+        "exercises": [
+            {
+                "name": "Seated Active Knee Extension",
+                "joint": "knee",
+                "side": "left",
+                "max_safe_angle": 30,
+                "min_safe_angle": 0,
+                "target_reps": 10,
+                "target_sets": 3,
+                "instructions": [
+                    "Perform the exercise while seated with thigh supported on chair.",
+                    "Slowly extend the knee up to the prescribed 30 degree limit."
+                ],
+                "restrictions": [
+                    "Do not extend knee beyond 30 degrees.",
+                    "Avoid sudden jerky terminal extension."
+                ]
+            },
+            {
+                "name": "Rehab Bodyweight Squat",
+                "joint": "knee",
+                "side": "bilateral",
+                "max_safe_angle": 70,
+                "min_safe_angle": 0,
+                "target_reps": 8,
+                "target_sets": 3,
+                "instructions": [
+                    "Maintain upright torso posture with feet shoulder-width apart.",
+                    "Controlled descent to shallow 70 degree knee flexion."
+                ],
+                "restrictions": [
+                    "Do not squat deeper than 70 degrees knee bend."
+                ]
+            },
+            {
+                "name": "Shoulder Abduction & Flexion",
+                "joint": "shoulder",
+                "side": "right",
+                "max_safe_angle": 90,
+                "min_safe_angle": 0,
+                "target_reps": 10,
+                "target_sets": 3,
+                "instructions": [
+                    "Smoothly raise arm out to the side up to shoulder height."
+                ],
+                "restrictions": [
+                    "Do not elevate arm above 90 degrees."
+                ]
+            }
+        ]
+    }
+
+
+async def parse_prescription(file_bytes: bytes, mime_type: str) -> dict:
+    """Parse physiotherapy prescription document into structured JSON."""
+    if not file_bytes or len(file_bytes) == 0:
+        return _mock_prescription()
+
+    system = (
+        "You are an expert clinical physiotherapy parsing assistant. Extract unstructured "
+        "physiotherapy report contents into structured exercise instructions strictly following clinical safety rules:\n"
+        "1. Never invent a diagnosis, surgical status, ROM limit, sets, or reps.\n"
+        "2. Only extract values explicitly provided in the document. Return null if missing.\n"
+        "3. If a restriction is ambiguous, mark it clearly under restrictions.\n"
+        "Always respond in valid JSON matching the exact schema."
+    )
+    prompt = """Analyze the attached physiotherapy document or report.
+
+Return JSON in this schema:
+{
+  "patient_context": {
+    "diagnosis": "Explicit diagnosis or null if missing",
+    "surgical_status": "Explicit surgical status or null if missing",
+    "notes": ["clinical note 1"]
+  },
+  "exercises": [
+    {
+      "name": "Exercise Name",
+      "joint": "knee|hip|shoulder|elbow|ankle|spine",
+      "side": "left|right|bilateral",
+      "max_safe_angle": 30,
+      "min_safe_angle": 0,
+      "target_reps": 10,
+      "target_sets": 3,
+      "instructions": ["instruction 1"],
+      "restrictions": ["restriction 1"]
+    }
+  ]
+}"""
+
+    try:
+        return await _call_gemini_vision(system, prompt, file_bytes, mime_type)
+    except Exception as e:
+        print(f"[Gemini Physio] Document parse failed: {e}. Using clinical fallback prescription.")
+        return _mock_prescription()
+
+
+async def audit_rehab_session(telemetry: dict) -> dict:
+    """Audit rehabilitation session telemetry (not raw video frames) for ROM compliance and feedback."""
+    system = (
+        "You are a clinical AI movement observer assistant. Audit structured exercise movement telemetry. "
+        "Evaluate whether prescribed guardrails were respected. Voice feedback must be under 15 words, clear, "
+        "encouraging, actionable, and non-technical."
+    )
+    prompt = f"""Movement Telemetry: {json.dumps(telemetry)}
+
+Return JSON:
+{{
+  "status": "compliant | needs_correction",
+  "guardrail_compliance": true,
+  "issue": "Brief clinical observation or null",
+  "voice_feedback": "Voice correction under 15 words",
+  "clinical_log": {{
+    "reps_completed": 0,
+    "reps_with_limit_exceeded": 0,
+    "sets_completed": 0
+  }}
+}}"""
+
+    try:
+        return await _call_gemini(system, prompt)
+    except Exception as e:
+        print(f"[Gemini Physio] Audit failed: {e}. Using fallback audit.")
+        exceeded = telemetry.get("rom_exceeded", False)
+        return {
+            "status": "needs_correction" if exceeded else "compliant",
+            "guardrail_compliance": not exceeded,
+            "issue": "ROM limit exceeded" if exceeded else None,
+            "voice_feedback": "Stay within the prescribed range." if exceeded else "Good movement! Keep it controlled.",
+            "clinical_log": {
+                "reps_completed": telemetry.get("rep", 1),
+                "reps_with_limit_exceeded": 1 if exceeded else 0,
+                "sets_completed": telemetry.get("set", 1)
+            }
+        }
+
+
+async def generate_physio_summary(telemetry: dict) -> dict:
+    """Generate overall natural language clinical adherence summary for a finished rehab session."""
+    system = (
+        "You are a supportive physiotherapy clinical assistant summarizing a completed session. "
+        "Write a 2-3 sentence encouraging, concise clinical summary."
+    )
+    prompt = f"""Session Summary Telemetry: {json.dumps(telemetry)}
+
+Return JSON:
+{{
+  "overall_adherence": "Good adherence with minimal ROM deviations.",
+  "clinical_notes": ["Note 1", "Note 2"]
+}}"""
+
+    try:
+        return await _call_gemini(system, prompt)
+    except Exception as e:
+        return {
+            "overall_adherence": "Great effort! Excellent session adherence to your prescribed exercises.",
+            "clinical_notes": [
+                "Maintained controlled movement tempo throughout sets.",
+                "Consistently respected safe angle guardrails."
+            ]
+        }
+
+

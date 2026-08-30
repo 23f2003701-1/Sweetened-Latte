@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.routers import users, plans, exercise, meals, hydration
+from app.routers import users, plans, exercise, meals, hydration, physio
 
 load_dotenv()
 
@@ -29,6 +29,8 @@ app.include_router(plans.router, prefix="/api")
 app.include_router(exercise.router, prefix="/api")
 app.include_router(meals.router, prefix="/api")
 app.include_router(hydration.router, prefix="/api")
+app.include_router(physio.router, prefix="/api")
+
 
 
 @app.get("/")
