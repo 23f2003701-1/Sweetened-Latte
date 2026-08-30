@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, ArrowLeft, Dumbbell, Target, Clock, User, AlertTriangle } from 'lucide-react';
 import { onboardUser } from '../../lib/api';
-import { getUserId, saveProfile, savePlan } from '../../lib/userSession';
+import { getUserId, saveUserId, saveProfile, savePlan, markOnboarded } from '../../lib/userSession';
 import { LoadingSpinner } from '../shared/SharedComponents';
 
 const EQUIPMENT_OPTIONS = [
@@ -102,6 +102,8 @@ export default function OnboardingFlow({ onComplete }) {
           : [],
       };
       const result = await onboardUser(profile);
+      saveUserId(result.user_id);
+      markOnboarded();
       saveProfile(profile);
       savePlan(result.plan);
       onComplete({ userId: result.user_id, plan: result.plan });

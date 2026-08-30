@@ -12,6 +12,15 @@ class RegeneratePlanRequest(BaseModel):
     user_feedback: Optional[str] = None
 
 
+@router.get("/{user_id}", response_model=SuccessResponse)
+async def get_plan(user_id: str):
+    """Fetch the active plan for a user."""
+    plan = db.get_active_plan(user_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": "No active plan found"})
+    return SuccessResponse(data=plan)
+
+
 @router.post("/{user_id}/regenerate", response_model=SuccessResponse)
 async def regenerate_plan(user_id: str, body: RegeneratePlanRequest = RegeneratePlanRequest()):
     """Force a full regeneration of the user's plan."""
@@ -30,3 +39,4 @@ async def regenerate_plan(user_id: str, body: RegeneratePlanRequest = Regenerate
 
     saved = db.save_plan(user_id, plan_json, change_summary=None)
     return SuccessResponse(data={"plan": plan_json, "plan_id": saved.get("plan_id")})
+
