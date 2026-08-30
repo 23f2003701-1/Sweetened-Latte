@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Supported models in Google GenAI SDK
-PRIMARY_MODEL = "gemini-3.5-flash"
+PRIMARY_MODEL = "gemini-3.5-flash-lite"
 FALLBACK_MODEL = "gemini-3.6-flash"
 
 

@@ -48,7 +48,7 @@ function CoachingCard({ coaching }) {
   );
 }
 
-export default function ExerciseSession({ userId, onWorkoutEnd }) {
+export default function ExerciseSession({ userId, workoutContext, onWorkoutEnd }) {
   const [phase, setPhase] = useState('idle'); // idle | active | between_sets | ended
   const [sessionId, setSessionId] = useState(null);
   const [repCount, setRepCount] = useState(0);
@@ -58,6 +58,8 @@ export default function ExerciseSession({ userId, onWorkoutEnd }) {
   const [lastCoaching, setLastCoaching] = useState(null);
   const [setLoading, setSetLoading] = useState(false);
   const [endLoading, setEndLoading] = useState(false);
+  
+  const exerciseName = workoutContext?.name || 'Squat';
 
   const repsRef = useRef([]);
 
@@ -68,7 +70,7 @@ export default function ExerciseSession({ userId, onWorkoutEnd }) {
 
     if (!sessionId) {
       try {
-        const s = await startSession(userId, 'Squat');
+        const s = await startSession(userId, exerciseName);
         setSessionId(s.session_id);
       } catch (e) {
         console.error('Failed to start session', e);
@@ -106,7 +108,7 @@ export default function ExerciseSession({ userId, onWorkoutEnd }) {
 
     const payload = {
       user_id: userId,
-      exercise: 'Squat',
+      exercise: exerciseName,
       reps_completed: repsData.length,
       avg_depth_score: Math.round(avgDepth),
       avg_tempo_seconds: Math.round(avgTempo * 10) / 10,
@@ -160,10 +162,22 @@ export default function ExerciseSession({ userId, onWorkoutEnd }) {
     <div className="page">
       <div className="app-container">
         <div style={{ marginBottom: '1.5rem' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>Squat Coach</h1>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Real-time form tracking powered by MediaPipe — video never leaves your device.
-          </p>
+          <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>{exerciseName} Coach</h1>
+          {workoutContext ? (
+            <div style={{ 
+              display: 'inline-flex', alignItems: 'center', gap: '0.5rem', 
+              background: 'rgba(0, 230, 118, 0.1)', padding: '0.4rem 0.8rem', 
+              borderRadius: '8px', border: '1px solid var(--accent-green)',
+              color: 'var(--accent-green)', fontWeight: 600, fontSize: '0.9rem',
+              marginTop: '0.5rem'
+            }}>
+              Target: {workoutContext.sets} sets of {workoutContext.reps} reps
+            </div>
+          ) : (
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Real-time form tracking powered by MediaPipe — video never leaves your device.
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
