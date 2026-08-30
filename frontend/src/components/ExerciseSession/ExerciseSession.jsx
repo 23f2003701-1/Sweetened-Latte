@@ -187,9 +187,9 @@ function ExercisePicker({ selected, onChange, disabled }) {
 }
 
 // ── Main ExerciseSession component ────────────────────────────────────────────
-export default function ExerciseSession({ userId, onWorkoutEnd }) {
+export default function ExerciseSession({ userId, workoutContext, onWorkoutEnd }) {
   const [phase, setPhase]               = useState('idle');   // idle | active | between_sets | ended
-  const [exercise, setExercise]         = useState('Squats');
+  const [exercise, setExercise]         = useState(workoutContext?.name || 'Squats');
   const [sessionId, setSessionId]       = useState(null);
   const [repCount, setRepCount]         = useState(0);
   const [reps, setReps]                 = useState([]);
@@ -366,10 +366,22 @@ export default function ExerciseSession({ userId, onWorkoutEnd }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>AI Exercise Coach</h1>
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Real-time form tracking + Gemini coaching · video stays on-device
-            </p>
+            <h1 style={{ fontSize: '2rem', marginBottom: 4 }}>{exercise} Coach</h1>
+            {workoutContext ? (
+              <div style={{ 
+                display: 'inline-flex', alignItems: 'center', gap: '0.5rem', 
+                background: 'rgba(0, 230, 118, 0.1)', padding: '0.4rem 0.8rem', 
+                borderRadius: '8px', border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)', fontWeight: 600, fontSize: '0.9rem',
+                marginTop: '0.5rem'
+              }}>
+                Target: {workoutContext.sets} sets of {workoutContext.reps} reps
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)' }}>
+                Real-time form tracking powered by MediaPipe — video never leaves your device.
+              </p>
+            )}
           </div>
           {/* Mute toggle */}
           <button

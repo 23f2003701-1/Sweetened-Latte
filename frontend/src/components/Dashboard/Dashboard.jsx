@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Calendar, Dumbbell, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, Calendar, Dumbbell, Zap, ChevronDown, ChevronUp, Play } from 'lucide-react';
 import { getUserPlan, regeneratePlan } from '../../lib/api';
 import { savePlan } from '../../lib/userSession';
 import { SkeletonCard, ErrorMessage, SectionHeader, LoadingSpinner } from '../shared/SharedComponents';
 
-function ExerciseCard({ exercise }) {
+function ExerciseCard({ exercise, onStart, isToday }) {
   return (
     <div style={{
       display: 'flex',
@@ -32,31 +32,54 @@ function ExerciseCard({ exercise }) {
           </div>
         )}
       </div>
+      <button 
+        className={`btn btn-sm ${isToday ? 'btn-primary' : 'btn-secondary'}`}
+        style={{ opacity: isToday ? 1 : 0.5, cursor: isToday ? 'pointer' : 'not-allowed' }}
+        onClick={(e) => { 
+          e.stopPropagation(); 
+          if (isToday) onStart(exercise); 
+        }}
+        disabled={!isToday}
+        title={isToday ? "Start tracking this exercise" : "You can only track today's exercises"}
+      >
+        <Play size={14} /> Start
+      </button>
     </div>
   );
 }
 
-function DayCard({ day }) {
-  const [open, setOpen] = useState(false);
+function DayCard({ day, isToday, onStartExercise }) {
+  const [open, setOpen] = useState(isToday);
 
   return (
-    <div className="card" style={{ cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+    <div 
+      className={`card ${isToday ? 'accent' : ''}`} 
+      style={{ 
+        cursor: 'pointer', 
+        borderColor: isToday ? 'var(--accent-green)' : 'var(--border)',
+        boxShadow: isToday ? '0 0 16px rgba(0, 230, 118, 0.15)' : 'var(--shadow-card)',
+      }} 
+      onClick={() => setOpen((o) => !o)}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: '1rem' }}>{day.day}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--accent-green)', fontWeight: 500, marginTop: 2 }}>
+          <div style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {day.day}
+            {isToday && <span className="badge badge-green" style={{ fontSize: '0.65rem' }}>TODAY</span>}
+          </div>
+          <div style={{ fontSize: '0.85rem', color: isToday ? 'var(--accent-green)' : 'var(--text-secondary)', fontWeight: 500, marginTop: 2 }}>
             {day.focus}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span className="badge badge-green">{day.exercises?.length || 0} exercises</span>
+          <span className="badge badge-blue">{day.exercises?.length || 0} exercises</span>
           {open ? <ChevronUp size={18} color="var(--text-muted)" /> : <ChevronDown size={18} color="var(--text-muted)" />}
         </div>
       </div>
       {open && day.exercises && (
         <div style={{ marginTop: '0.5rem' }}>
           {day.exercises.map((ex, i) => (
-            <ExerciseCard key={i} exercise={ex} />
+            <ExerciseCard key={i} exercise={ex} onStart={onStartExercise} isToday={isToday} />
           ))}
         </div>
       )}
@@ -64,7 +87,7 @@ function DayCard({ day }) {
   );
 }
 
-export default function Dashboard({ userId, changeSummary, onClearChange }) {
+export default function Dashboard({ userId, changeSummary, onClearChange, onStartExercise }) {
   const [regenFeedback, setRegenFeedback] = useState('');
   const qc = useQueryClient();
 
@@ -84,6 +107,9 @@ export default function Dashboard({ userId, changeSummary, onClearChange }) {
   });
 
   const plan = planData?.plan_json;
+  
+  // Get today's day name (e.g. "Monday")
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
     <div className="page">
@@ -128,24 +154,14 @@ export default function Dashboard({ userId, changeSummary, onClearChange }) {
             {/* Weekly schedule */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
               {plan.weekly_schedule?.map((day, i) => (
-                <DayCard key={i} day={day} />
+                <DayCard 
+                  key={i} 
+                  day={day} 
+                  isToday={day.day === todayName}
+                  onStartExercise={onStartExercise}
+                />
               ))}
             </div>
-
-            {/* Nutrition tips */}
-            {plan.nutrition_tips?.length > 0 && (
-              <>
-                <SectionHeader title="Nutrition Tips" subtitle="Simple, practical guidance — no calorie counting" />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
-                  {plan.nutrition_tips.map((tip, i) => (
-                    <div key={i} className="card" style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                      <span style={{ color: 'var(--accent-green)', fontSize: '1.2rem', lineHeight: 1 }}>🥗</span>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.6 }}>{tip}</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
 
             {/* Regenerate with feedback */}
             <div className="card" style={{ marginTop: '1rem' }}>

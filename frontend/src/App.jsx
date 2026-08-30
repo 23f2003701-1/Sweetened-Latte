@@ -30,6 +30,7 @@ function App() {
   const [userId, setUserId] = useState(getUserId());
   const [activeTab, setActiveTab] = useState('dashboard');
   const [changeSummary, setChangeSummary] = useState(null);
+  const [workoutContext, setWorkoutContext] = useState(null);
 
   const handleOnboardComplete = ({ userId: uid }) => {
     setUserId(uid);
@@ -38,10 +39,16 @@ function App() {
   };
 
   const handleWorkoutEnd = (summary) => {
+    setWorkoutContext(null);
     if (summary) {
       setChangeSummary(summary);
       setActiveTab('dashboard');
     }
+  };
+
+  const handleStartExercise = (exerciseCtx) => {
+    setWorkoutContext(exerciseCtx);
+    setActiveTab('exercise');
   };
 
   const handleReset = () => {
@@ -127,10 +134,15 @@ function App() {
           userId={userId}
           changeSummary={changeSummary}
           onClearChange={() => setChangeSummary(null)}
+          onStartExercise={handleStartExercise}
         />
       )}
       {activeTab === 'exercise' && (
-        <ExerciseSession userId={userId} onWorkoutEnd={handleWorkoutEnd} />
+        <ExerciseSession 
+          userId={userId} 
+          workoutContext={workoutContext}
+          onWorkoutEnd={handleWorkoutEnd} 
+        />
       )}
       {activeTab === 'food' && <FoodScanner userId={userId} />}
       {activeTab === 'hydration' && <HydrationWidget userId={userId} />}

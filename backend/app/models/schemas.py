@@ -104,9 +104,21 @@ class RepFeedbackResponse(BaseModel):
 class MealAnalysisResponse(BaseModel):
     meal_id: str
     identified_items: List[str]
+    is_calorie_heavy: Optional[bool] = False
     estimated_nutrition: dict
     confidence: str
     verdict: str
+    alternative_food: Optional[dict] = None
+
+
+class LogMealChoiceRequest(BaseModel):
+    user_id: str
+    meal_id: Optional[str] = None
+    choice: str  # "original" | "alternative"
+    meal_name: Optional[str] = ""
+    calories_consumed_range: Optional[str] = ""
+    is_calorie_heavy: Optional[bool] = False
+
 
 
 # ── Hydration ──────────────────────────────────────────────────────────────────
